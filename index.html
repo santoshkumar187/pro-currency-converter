@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en" class="">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Currency Converter</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Tailwind CSS Configuration -->
+    <script>
+        // This configuration needs to be after the main Tailwind script is loaded.
+        tailwind.config = {
+            darkMode: 'class', // This line enables class-based dark mode
+        }
+    </script>
+    
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* --- Base Styles --- */
+        body {
+            font-family: 'Inter', sans-serif;
+            transition: background-color 0.3s ease, color 0.3s ease;
+            overflow: hidden; /* Hide scrollbars caused by canvas */
+        }
+        
+        #background-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1; /* Place canvas behind everything */
+        }
+
+        /* --- Custom Focus Ring --- */
+        .custom-focus-ring:focus-within, .custom-focus-ring:focus {
+            outline: none;
+            /* Updated to an indigo focus ring */
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.5); 
+        }
+
+        /* --- Scrollable Input Hint --- */
+        #amount {
+            cursor: ns-resize;
+        }
+
+        /* --- Custom Dropdown with Search --- */
+        .currency-dropdown {
+            position: relative;
+        }
+        .dropdown-options {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 10;
+            border-top: none;
+            /* Animation properties */
+            transform-origin: top;
+            transition: transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.2s ease;
+            opacity: 0;
+            transform: scaleY(0.95) translateY(-10px);
+            pointer-events: none;
+        }
+        .dropdown-options.open {
+            opacity: 1;
+            transform: scaleY(1) translateY(0);
+            pointer-events: auto;
+        }
+        .dropdown-options::-webkit-scrollbar { width: 6px; }
+        .dropdown-options::-webkit-scrollbar-track { background: #f1f5f9; } /* bg-slate-100 */
+        .dark .dropdown-options::-webkit-scrollbar-track { background: #1e293b; } /* bg-slate-800 */
+        .dropdown-options::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 3px;} /* bg-slate-400 */
+        .dark .dropdown-options::-webkit-scrollbar-thumb { background: #475569; } /* bg-slate-600 */
+
+        /* --- Keyframe Animations --- */
+        @keyframes rotate-icon {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .animate-rotate {
+            animation: rotate-icon 0.5s ease-in-out;
+        }
+        
+        /* --- Theme Toggle --- */
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #4f46e5; /* bg-indigo-600 */
+        }
+        .toggle-checkbox:checked + .toggle-label .toggle-ball {
+            transform: translateX(100%);
+        }
+    </style>
+</head>
+<body class="bg-slate-100 dark:bg-slate-900 flex items-center justify-center min-h-screen p-4">
+    
+    <canvas id="background-canvas"></canvas>
+
+    <div class="w-full max-w-md mx-auto">
+        <!-- Theme Toggle -->
+        <div class="flex justify-end mb-4">
+            <div class="flex items-center space-x-2 text-slate-500">
+                 <svg id="sun-icon" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                <input type="checkbox" id="theme-toggle" class="hidden toggle-checkbox">
+                <label for="theme-toggle" class="relative inline-block w-10 h-5 bg-slate-300 dark:bg-slate-600 rounded-full cursor-pointer transition-colors duration-300 toggle-label">
+                    <span class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full shadow-md transform transition-transform duration-300 toggle-ball"></span>
+                </label>
+                 <svg id="moon-icon" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+            </div>
+        </div>
+
+        <div class="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl shadow-lg p-6 md:p-8 transition-all duration-300 hover:shadow-2xl hover:-translate-y-1">
+            <!-- Header -->
+            <div class="text-center mb-8">
+                <h1 class="text-3xl font-bold text-slate-800 dark:text-white">Currency Converter</h1>
+                <p class="text-slate-500 dark:text-slate-400 mt-2">Real-time exchange rates with search.</p>
+            </div>
+
+            <!-- Converter Form -->
+            <div class="space-y-6">
+                <!-- Amount Input -->
+                <div>
+                    <label for="amount" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Amount</label>
+                    <input type="number" id="amount" value="100" class="w-full px-4 py-3 bg-slate-50/70 dark:bg-slate-700/70 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-600 rounded-lg custom-focus-ring transition-all duration-300 text-lg" placeholder="Enter amount">
+                </div>
+
+                <!-- From/To Currency Row -->
+                <div class="flex items-center justify-between space-x-2 md:space-x-4">
+                    <!-- From Currency -->
+                    <div class="w-full currency-dropdown" id="from-currency-dropdown"></div>
+
+                    <!-- Swap Button -->
+                    <div class="pt-6">
+                        <button id="swap-button" class="p-3 bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300 rounded-full hover:bg-indigo-600 hover:text-white hover:rotate-180 hover:scale-110 transition-all duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-100 dark:focus:ring-offset-slate-800 focus:ring-indigo-500">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                        </button>
+                    </div>
+
+                    <!-- To Currency -->
+                    <div class="w-full currency-dropdown" id="to-currency-dropdown"></div>
+                </div>
+            </div>
+
+            <!-- Result Display -->
+            <div id="result-container" class="mt-8 text-center">
+                <div id="loading" class="text-slate-500 dark:text-slate-400">Fetching rates...</div>
+                <div id="result" class="hidden">
+                    <p id="rate-info" class="text-slate-500 dark:text-slate-400 mb-2"></p>
+                    <div class="flex items-center justify-center space-x-2">
+                        <p id="converted-amount" class="text-3xl md:text-4xl font-bold text-indigo-600 dark:text-indigo-400"></p>
+                        <button id="copy-button" class="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:scale-110 transition-all" title="Copy to clipboard">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                        </button>
+                    </div>
+                </div>
+                 <div id="error-message" class="text-red-500 mt-4 hidden"></div>
+            </div>
+            
+            <!-- Last Updated Info -->
+            <div class="text-center mt-6 text-xs text-slate-400 dark:text-slate-500">
+                <p>Rates updated: <span id="last-updated">N/A</span></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DOM Elements ---
+        const amountInput = document.getElementById('amount');
+        const fromDropdownContainer = document.getElementById('from-currency-dropdown');
+        const toDropdownContainer = document.getElementById('to-currency-dropdown');
+        const swapButton = document.getElementById('swap-button');
+        const loadingDiv = document.getElementById('loading');
+        const resultDiv = document.getElementById('result');
+        const rateInfoP = document.getElementById('rate-info');
+        const convertedAmountP = document.getElementById('converted-amount');
+        const copyButton = document.getElementById('copy-button');
+        const lastUpdatedSpan = document.getElementById('last-updated');
+        const errorMessageDiv = document.getElementById('error-message');
+        const themeToggle = document.getElementById('theme-toggle');
+        const sunIcon = document.getElementById('sun-icon');
+        const moonIcon = document.getElementById('moon-icon');
+
+        // --- API & State ---
+        const API_URL = 'https://v6.exchangerate-api.com/v6/YOUR_API_KEY/latest/USD';
+        const MOCK_API_KEY = "1a2b3c4d5e6f7g8h9i0j";
+        const MOCK_API_URL = `https://v6.exchangerate-api.com/v6/${MOCK_API_KEY}/latest/USD`;
+        let conversionRates = {};
+        let fromCurrency = 'USD';
+        let toCurrency = 'EUR';
+        let animationFrameId;
+
+        // --- Currency to Country Code Mapping (for flags) ---
+        const currencyCountryMap = {
+            AED: 'ae', AFN: 'af', ALL: 'al', AMD: 'am', ANG: 'an', AOA: 'ao', ARS: 'ar', AUD: 'au',
+            AWG: 'aw', AZN: 'az', BAM: 'ba', BBD: 'bb', BDT: 'bd', BGN: 'bg', BHD: 'bh', BIF: 'bi',
+            BMD: 'bm', BND: 'bn', BOB: 'bo', BRL: 'br', BSD: 'bs', BTC: 'btc', BTN: 'bt', BWP: 'bw',
+            BYN: 'by', BZD: 'bz', CAD: 'ca', CDF: 'cd', CHF: 'ch', CLP: 'cl', CNY: 'cn', COP: 'co',
+            CRC: 'cr', CUP: 'cu', CVE: 'cv', CZK: 'cz', DJF: 'dj', DKK: 'dk', DOP: 'do', DZD: 'dz',
+            EGP: 'eg', ERN: 'er', ETB: 'et', EUR: 'eu', FJD: 'fj', FKP: 'fk', FOK: 'fo', GBP: 'gb',
+            GEL: 'ge', GGP: 'gg', GHS: 'gh', GIP: 'gi', GMD: 'gm', GNF: 'gn', GTQ: 'gt', GYD: 'gy',
+            HKD: 'hk', HNL: 'hn', HRK: 'hr', HTG: 'ht', HUF: 'hu', IDR: 'id', ILS: 'il', IMP: 'im',
+            INR: 'in', IQD: 'iq', IRR: 'ir', ISK: 'is', JEP: 'je', JMD: 'jm', JOD: 'jo', JPY: 'jp',
+            KES: 'ke', KGS: 'kg', KHR: 'kh', KID: 'ki', KMF: 'km', KRW: 'kr', KWD: 'kw', KYD: 'ky',
+            KZT: 'kz', LAK: 'la', LBP: 'lb', LKR: 'lk', LRD: 'lr', LSL: 'ls', LYD: 'ly', MAD: 'ma',
+            MDL: 'md', MGA: 'mg', MKD: 'mk', MMK: 'mm', MNT: 'mn', MOP: 'mo', MRU: 'mr', MUR: 'mu',
+            MVR: 'mv', MWK: 'mw', MXN: 'mx', MYR: 'my', MZN: 'mz', NAD: 'na', NGN: 'ng', NIO: 'ni',
+            NOK: 'no', NPR: 'np', NZD: 'nz', OMR: 'om', PAB: 'pa', PEN: 'pe', PGK: 'pg', PHP: 'ph',
+            PKR: 'pk', PLN: 'pl', PYG: 'py', QAR: 'qa', RON: 'ro', RSD: 'rs', RUB: 'ru', RWF: 'rw',
+            SAR: 'sa', SBD: 'sb', SCR: 'sc', SDG: 'sd', SEK: 'se', SGD: 'sg', SHP: 'sh', SLE: 'sl',
+            SLL: 'sl', SOS: 'so', SRD: 'sr', SSP: 'ss', STN: 'st', SYP: 'sy', SZL: 'sz', THB: 'th',
+            TJS: 'tj', TMT: 'tm', TND: 'tn', TOP: 'to', TRY: 'tr', TTD: 'tt', TVD: 'tv', TWD: 'tw',
+            TZS: 'tz', UAH: 'ua', UGX: 'ug', USD: 'us', UYU: 'uy', UZS: 'uz', VES: 've', VND: 'vn',
+            VUV: 'vu', WST: 'ws', XAF: 'cm', XCD: 'ag', XDR: 'un', XOF: 'sn', XPF: 'pf', YER: 'ye',
+            ZAR: 'za', ZMW: 'zm', ZWL: 'zw'
+        };
+
+        /**
+         * Creates a searchable, flag-adorned currency dropdown.
+         */
+        function createCustomDropdown(container, type, currencies) {
+            const selectedCurrency = (type === 'from') ? fromCurrency : toCurrency;
+            const countryCode = currencyCountryMap[selectedCurrency] || 'xx';
+            
+            container.innerHTML = `
+                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">${type.charAt(0).toUpperCase() + type.slice(1)}</label>
+                <div class="relative">
+                    <button type="button" class="w-full flex items-center text-left px-4 py-3 bg-slate-50/70 dark:bg-slate-700/70 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-600 rounded-lg custom-focus-ring transition-all duration-300">
+                        <img src="https://flagcdn.com/16x12/${countryCode}.png" class="w-4 h-3 mr-3" alt="${selectedCurrency} flag">
+                        <span class="flex-grow">${selectedCurrency}</span>
+                        <svg class="h-5 w-5 text-slate-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                    </button>
+                    <div class="dropdown-options bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-b-lg">
+                        <input type="text" class="w-full p-2 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700 sticky top-0" placeholder="Search...">
+                        <ul class="p-1">
+                            ${currencies.map(c => `
+                                <li class="flex items-center p-2 rounded-md hover:bg-indigo-100 dark:hover:bg-indigo-900/50 cursor-pointer" data-value="${c}">
+                                    <img src="https://flagcdn.com/16x12/${currencyCountryMap[c] || 'xx'}.png" class="w-4 h-3 mr-3" alt="${c} flag" onerror="this.style.display='none'">
+                                    <span class="font-medium text-slate-800 dark:text-slate-200">${c}</span>
+                                </li>
+                            `).join('')}
+                        </ul>
+                    </div>
+                </div>
+            `;
+            
+            const button = container.querySelector('button');
+            const optionsDiv = container.querySelector('.dropdown-options');
+            const searchInput = container.querySelector('input[type="text"]');
+            const optionsList = container.querySelector('ul');
+
+            button.addEventListener('click', () => optionsDiv.classList.toggle('open'));
+            
+            document.addEventListener('click', (e) => {
+                if (!container.contains(e.target)) {
+                    optionsDiv.classList.remove('open');
+                }
+            });
+
+            searchInput.addEventListener('input', (e) => {
+                const searchTerm = e.target.value.toUpperCase();
+                optionsList.querySelectorAll('li').forEach(li => {
+                    const isVisible = li.dataset.value.includes(searchTerm);
+                    li.style.display = isVisible ? 'flex' : 'none';
+                });
+            });
+
+            optionsList.addEventListener('click', (e) => {
+                const li = e.target.closest('li');
+                if (li) {
+                    const newValue = li.dataset.value;
+                    if (type === 'from') fromCurrency = newValue;
+                    else toCurrency = newValue;
+                    
+                    optionsDiv.classList.remove('open');
+                    updateDropdownDisplay(container, newValue);
+                    updateConversion();
+                }
+            });
+        }
+        
+        function updateDropdownDisplay(container, currency) {
+            const button = container.querySelector('button');
+            const flagImg = button.querySelector('img');
+            const textSpan = button.querySelector('span');
+            const countryCode = currencyCountryMap[currency] || 'xx';
+            
+            flagImg.src = `https://flagcdn.com/16x12/${countryCode}.png`;
+            flagImg.alt = `${currency} flag`;
+            textSpan.textContent = currency;
+        }
+
+        /**
+         * Fetches currency data from API or cache.
+         */
+        async function initializeApp() {
+            try {
+                const cachedData = localStorage.getItem('currencyData');
+                const now = new Date().getTime();
+                let data;
+
+                if (cachedData) {
+                    const { timestamp, rates } = JSON.parse(cachedData);
+                    // Use cache if it's less than 4 hours old
+                    if (now - timestamp < 4 * 60 * 60 * 1000) {
+                        data = rates;
+                    }
+                }
+                
+                if (!data) {
+                    const response = await fetch(MOCK_API_URL).catch(() => getMockData());
+                    if (!response.ok && response.url !== MOCK_API_URL) throw new Error(`HTTP error! status: ${response.status}`);
+                    
+                    data = response.url === MOCK_API_URL ? await getMockData().json() : await response.json();
+                    
+                    if (data.result === 'error') throw new Error(`API Error: ${data['error-type']}`);
+                    
+                    localStorage.setItem('currencyData', JSON.stringify({ timestamp: now, rates: data }));
+                }
+
+                conversionRates = data.conversion_rates;
+                const currencies = Object.keys(conversionRates);
+                
+                createCustomDropdown(fromDropdownContainer, 'from', currencies);
+                createCustomDropdown(toDropdownContainer, 'to', currencies);
+                
+                updateConversion(true); // Initial update without animation
+                updateLastUpdated(data.time_last_update_unix);
+
+                loadingDiv.classList.add('hidden');
+                resultDiv.classList.remove('hidden');
+
+            } catch (error) {
+                console.error("Initialization failed:", error);
+                showError("Could not load exchange rates. Please try again later.");
+                loadingDiv.textContent = "Failed to load data.";
+            }
+        }
+        
+        function getMockData() {
+            const mockResponse = {
+                result: "success",
+                time_last_update_unix: Math.floor(Date.now() / 1000) - 3600,
+                base_code: "USD",
+                conversion_rates: {
+                    "USD": 1, "EUR": 0.93, "JPY": 157.5, "GBP": 0.79, "AUD": 1.5, "CAD": 1.37, "CHF": 0.9,
+                    "CNY": 7.25, "INR": 83.5, "BRL": 5.4, "AED": 3.67, "AFN": 71.2, "ALL": 93.5, "AMD": 387.9,
+                    "ZAR": 18.23, "KRW": 1385.32, "RUB": 87.50, "MXN": 18.10, "NZD": 1.63
+                }
+            };
+            return new Response(JSON.stringify(mockResponse), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        /**
+         * Animates the result field with an odometer effect.
+         */
+        function animateResult(element, endValue, currencyCode) {
+            const duration = 600; // ms
+            const startValue = parseFloat(element.textContent.replace(/,/g, '')) || 0;
+            
+            if (startValue === endValue) return;
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+
+            let startTime = null;
+
+            const step = (currentTime) => {
+                if (!startTime) startTime = currentTime;
+                const progress = Math.min((currentTime - startTime) / duration, 1);
+                // Ease-out cubic function for a smoother animation
+                const easedProgress = 1 - Math.pow(1 - progress, 3);
+                const currentValue = startValue + (endValue - startValue) * easedProgress;
+                
+                element.textContent = `${currentValue.toFixed(2)} ${currencyCode}`;
+
+                if (progress < 1) {
+                    animationFrameId = requestAnimationFrame(step);
+                }
+            };
+            
+            animationFrameId = requestAnimationFrame(step);
+        }
+
+        function updateConversion(isInitial = false) {
+            hideError();
+            const amount = parseFloat(amountInput.value);
+
+            if (isNaN(amount) || !fromCurrency || !toCurrency) {
+                convertedAmountP.textContent = '---';
+                rateInfoP.textContent = 'Enter a valid amount';
+                return;
+            }
+
+            const rateFrom = conversionRates[fromCurrency];
+            const rateTo = conversionRates[toCurrency];
+            const convertedAmount = (amount / rateFrom) * rateTo;
+
+            rateInfoP.textContent = `1 ${fromCurrency} = ${(rateTo / rateFrom).toFixed(4)} ${toCurrency}`;
+            
+            if (isInitial) {
+                 convertedAmountP.textContent = `${convertedAmount.toFixed(2)} ${toCurrency}`;
+            } else {
+                animateResult(convertedAmountP, convertedAmount, toCurrency);
+            }
+        }
+        
+        function handleSwap() {
+            [fromCurrency, toCurrency] = [toCurrency, fromCurrency]; // Swap values
+            updateDropdownDisplay(fromDropdownContainer, fromCurrency);
+            updateDropdownDisplay(toDropdownContainer, toCurrency);
+            updateConversion();
+        }
+
+        function handleCopy() {
+            const textToCopy = convertedAmountP.textContent.split(' ')[0];
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(textToCopy).then(() => {
+                    copyButton.title = 'Copied!';
+                    setTimeout(() => copyButton.title = 'Copy to clipboard', 2000);
+                });
+            } else { // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = textToCopy;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                copyButton.title = 'Copied!';
+                setTimeout(() => copyButton.title = 'Copy to clipboard', 2000);
+            }
+        }
+
+        function handleThemeToggle() {
+            const html = document.documentElement;
+            if (themeToggle.checked) {
+                html.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+                moonIcon.classList.add('animate-rotate');
+            } else {
+                html.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+                sunIcon.classList.add('animate-rotate');
+            }
+            // Remove animation class after it finishes
+            sunIcon.addEventListener('animationend', () => sunIcon.classList.remove('animate-rotate'));
+            moonIcon.addEventListener('animationend', () => moonIcon.classList.remove('animate-rotate'));
+        }
+        
+        function loadTheme() {
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme === 'dark' || (savedTheme === null && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                themeToggle.checked = true;
+                document.documentElement.classList.add('dark');
+            }
+        }
+
+        function updateLastUpdated(unixTimestamp) {
+            const date = new Date(unixTimestamp * 1000);
+            lastUpdatedSpan.textContent = date.toLocaleString();
+        }
+
+        function showError(message) {
+            errorMessageDiv.textContent = message;
+            errorMessageDiv.classList.remove('hidden');
+        }
+
+        function hideError() {
+            errorMessageDiv.classList.add('hidden');
+        }
+        
+        // --- Background Animation ---
+        const canvas = document.getElementById('background-canvas');
+        const ctx = canvas.getContext('2d');
+        let particlesArray;
+
+        // get mouse position
+        let mouse = {
+            x: null,
+            y: null,
+            radius: (canvas.height/100) * (canvas.width/100)
+        }
+
+        window.addEventListener('mousemove', function(event) {
+            mouse.x = event.x;
+            mouse.y = event.y;
+        });
+
+        // create particle
+        class Particle {
+            constructor(x, y, directionX, directionY, size, color) {
+                this.x = x;
+                this.y = y;
+                this.directionX = directionX;
+                this.directionY = directionY;
+                this.size = size;
+                this.color = color;
+            }
+            // method to draw individual particle
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2, false);
+                ctx.fillStyle = document.documentElement.classList.contains('dark') ? 'rgba(148, 163, 184, 0.1)' : 'rgba(100, 116, 139, 0.1)';
+                ctx.fill();
+            }
+            // check particle position, mouse position, move the particle, draw the particle
+            update() {
+                //check if particle is still within canvas
+                if (this.x > canvas.width || this.x < 0) {
+                    this.directionX = -this.directionX;
+                }
+                if (this.y > canvas.height || this.y < 0) {
+                    this.directionY = -this.directionY;
+                }
+
+                //check mouse collision detection
+                let dx = mouse.x - this.x;
+                let dy = mouse.y - this.y;
+                let distance = Math.sqrt(dx*dx + dy*dy);
+                if (distance < mouse.radius + this.size){
+                    if(mouse.x < this.x && this.x < canvas.width - this.size * 10) {
+                        this.x+=5;
+                    }
+                    if(mouse.x > this.x && this.x > this.size * 10) {
+                        this.x-=5;
+                    }
+                    if(mouse.y < this.y && this.y < canvas.height - this.size * 10) {
+                        this.y+=5;
+                    }
+                    if(mouse.y > this.y && this.y > this.size * 10) {
+                        this.y-=5;
+                    }
+                }
+                // move particle
+                this.x += this.directionX;
+                this.y += this.directionY;
+                // draw particle
+                this.draw();
+            }
+        }
+
+        // create particle array
+        function init() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            mouse.radius = (canvas.height/100) * (canvas.width/100);
+            particlesArray = [];
+            let numberOfParticles = (canvas.height * canvas.width) / 9000;
+            for (let i = 0; i < numberOfParticles; i++) {
+                let size = (Math.random() * 2) + 1;
+                let x = (Math.random() * ((innerWidth - size * 2) - (size * 2)) + size * 2);
+                let y = (Math.random() * ((innerHeight - size * 2) - (size * 2)) + size * 2);
+                let directionX = (Math.random() * 0.4) - 0.2;
+                let directionY = (Math.random() * 0.4) - 0.2;
+                let color = 'rgba(150,150,150,0.5)';
+
+                particlesArray.push(new Particle(x, y, directionX, directionY, size, color));
+            }
+        }
+
+        // animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            ctx.clearRect(0,0,innerWidth, innerHeight);
+
+            for (let i = 0; i < particlesArray.length; i++) {
+                particlesArray[i].update();
+            }
+            connect();
+        }
+
+        // check if particles are close enough to draw line between them
+        function connect(){
+            let opacityValue = 1;
+            for (let a = 0; a < particlesArray.length; a++) {
+                for (let b = a; b < particlesArray.length; b++) {
+                    let distance = ((particlesArray[a].x - particlesArray[b].x) * (particlesArray[a].x - particlesArray[b].x))
+                    + ((particlesArray[a].y - particlesArray[b].y) * (particlesArray[a].y - particlesArray[b].y));
+                    if (distance < (canvas.width/7) * (canvas.height/7)) {
+                        opacityValue = 1 - (distance/20000);
+                        let color = document.documentElement.classList.contains('dark') ? 'rgba(148, 163, 184,' + opacityValue + ')' : 'rgba(100, 116, 139,' + opacityValue + ')';
+                        ctx.strokeStyle = color;
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(particlesArray[a].x, particlesArray[a].y);
+                        ctx.lineTo(particlesArray[b].x, particlesArray[b].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        // --- Event Listeners ---
+        amountInput.addEventListener('input', updateConversion);
+        swapButton.addEventListener('click', handleSwap);
+        copyButton.addEventListener('click', handleCopy);
+        themeToggle.addEventListener('change', handleThemeToggle);
+        window.addEventListener('resize',
+            function(){
+                init();
+            }
+        );
+        // mouse out event
+        window.addEventListener('mouseout',
+            function(){
+                mouse.x = undefined;
+                mouse.y = undefined;
+            }
+        )
+
+        // Scroll listener for amount input
+        amountInput.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            let currentValue = parseFloat(amountInput.value) || 0;
+            let step = 1;
+            if (e.shiftKey) {
+                step = 10;
+            } else if (e.altKey) {
+                step = 0.01;
+            }
+
+            if (e.deltaY < 0) {
+                currentValue += step;
+            } else {
+                currentValue -= step;
+            }
+            
+            amountInput.value = Math.max(0, currentValue).toFixed(step === 0.01 ? 2 : 0);
+            updateConversion();
+        });
+        
+        // --- Initial Load ---
+        document.addEventListener('DOMContentLoaded', () => {
+            loadTheme();
+            initializeApp();
+            init();
+            animate();
+        });
+    </script>
+</body>
+</html>
